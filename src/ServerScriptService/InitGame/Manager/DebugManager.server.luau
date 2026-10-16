@@ -7,7 +7,7 @@
 
 	功能：
 	- DEBUG_BAG：Dev 服下背包增删清，路由 SystemBag
-	- DEBUG_SPECIAL：Dev 服下覆盖统计记录 / 在线奖励加秒与重置 / 扳手腕解锁全部手臂·材质·哑铃（路由 SystemArmWrestle.DebugUnlockAll）
+	- DEBUG_SPECIAL：Dev 服下覆盖统计记录 / 在线奖励加秒与重置
 	- DEBUG_RESET：Dev 服下清档（SystemDataStore.Remove）并踢出；PlayerRemoving 见 PlayerManager 对 ResetPlayer 跳过存档
 	- DEBUG_EMAIL：GM 白名单发运营邮件，路由 SystemEmail.GivePlrEmail（不受 Dev 开关限制）
 
@@ -38,7 +38,6 @@ local SystemRecord = Utils.SystemRecord
 local SystemDataStore = Utils.SystemDataStore
 local SystemEmail = Utils.SystemEmail
 local SystemOnlineAward = Utils.SystemOnlineAward
-local SystemArmWrestle = Utils.SystemArmWrestle
 local InsMgr = Utils.InsMgr
 local RequestRateLimit = Utils.RequestRateLimit
 local WorldUtil = Utils.WorldUtil
@@ -62,10 +61,6 @@ local REMOVE_STORE_OPTIONS = {
 local SERVER_TYPE_DEV = "Dev"
 
 local KICK_MSG_RESET = "重新进入"
-
-local UNLOCK_KIND_ARM = "Arm"
-local UNLOCK_KIND_MAT = "Mat"
-local UNLOCK_KIND_DUMBBELL = "Dumbbell"
 
 local skipMiddleware = { skipRateLimit = true, skipCheatDetection = true }
 
@@ -233,21 +228,6 @@ local function _handleCoverRecord(player: Player, data: any)
 	end
 end
 
---[[
-	扳手腕解锁某类全部款式，路由 SystemArmWrestle.DebugUnlockAll
-	@param player Player - 目标玩家
-	@param kind string - UNLOCK_KIND_ARM / UNLOCK_KIND_MAT / UNLOCK_KIND_DUMBBELL
-	@return nil
-]]
-local function _handleUnlockAll(player: Player, kind: string)
-	local ok, err = SystemArmWrestle.DebugUnlockAll(player, kind)
-	if ok then
-		Log.print("DebugManager: 扳手腕解锁全部", player.Name, kind)
-	else
-		Log.warn("DebugManager: 扳手腕解锁全部失败", player.Name, kind, err)
-	end
-end
-
 local _specialOperationHandlers = {
 	[EnumMgr.DebugSpecialOp.CoverRecord] = _handleCoverRecord,
 	[EnumMgr.DebugSpecialOp.AddOnlineSeconds] = function(player: Player, data: any)
@@ -266,15 +246,6 @@ local _specialOperationHandlers = {
 	[EnumMgr.DebugSpecialOp.ResetOnlineAward] = function(player: Player, _data: any)
 		SystemOnlineAward.ResetOnlineAward(player)
 		Log.print("DebugManager: 重置在线奖励", player.Name)
-	end,
-	[EnumMgr.DebugSpecialOp.UnlockAllArms] = function(player: Player, _data: any)
-		_handleUnlockAll(player, UNLOCK_KIND_ARM)
-	end,
-	[EnumMgr.DebugSpecialOp.UnlockAllMats] = function(player: Player, _data: any)
-		_handleUnlockAll(player, UNLOCK_KIND_MAT)
-	end,
-	[EnumMgr.DebugSpecialOp.UnlockAllDumbbells] = function(player: Player, _data: any)
-		_handleUnlockAll(player, UNLOCK_KIND_DUMBBELL)
 	end,
 }
 

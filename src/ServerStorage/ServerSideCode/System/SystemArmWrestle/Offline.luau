@@ -3,12 +3,12 @@
 	Description: 扳手腕离线奖励：按离线时长折算力量，进服记待领秒数，玩家点领取时由服务端结算
 	Author: 程莘
 	Created: 2026-10-15
-	Last Modified: 2026-10-15
+	Last Modified: 2026-10-16
 
 	规则（参数见 ArmWrestleConfig.OFFLINE_*）：
 	- 离线秒数 = 进服时 os.time() − 档案 LastOnline；不足 OFFLINE_MIN_SEC 不计，累计待领封顶 OFFLINE_MAX_SEC
 	- 未领取的待领秒数跨会话保留并继续累加（仍封顶）；LastOnline 为 0（新玩家 / 本功能上线前的老档）不发
-	- 力量 = Profile.GetBaseStrength × (待领秒数 ÷ 当前训练档冷却) × OFFLINE_RATE；不含药水与好友/会员加成
+	- 力量 = Profile.GetBaseStrength × (待领秒数 ÷ 基础训练间隔) × OFFLINE_RATE；不含药水与好友/会员加成
 	- 领取时才按当下倍率计算：通行证进服后异步查询，进服即算会漏 2 倍力量
 	- 时间只用服务器 os.time()，客户端不上传任何数值；跨服时钟差导致的负时长按不足门槛处理
 
@@ -63,14 +63,12 @@ local function _pending(data: { [string]: any }): number
 end
 
 --[[
-	当前训练档每次训练的冷却秒数（不含训练速度药水）
-	@param data table - ArmWrestle 档案（读 TrainTier）
+	基础训练间隔（不含训练速度药水）
+	@param _data table - ArmWrestle 档案（不再读 TrainTier）
 	@return number - 冷却秒数，恒 > 0
 ]]
-local function _trainCooldown(data: { [string]: any }): number
-	local tiers = ArmWrestleConfig.GetTrainSpeed()
-	local tier = tiers[data.TrainTier] or tiers[1]
-	local cooldown = tier and tonumber(tier.Value) or 1
+local function _trainCooldown(_data: { [string]: any }): number
+	local cooldown = ArmWrestleConfig.TRAIN_COOLDOWN
 	return if cooldown > 0 then cooldown else 1
 end
 
@@ -138,7 +136,7 @@ end
 --[[
 	按当前倍率计算待领离线力量
 	@param plr Player - 玩家（读会话通行证）
-	@param data table - ArmWrestle 档案（读 OfflinePending / TrainTier / 装备 / StrengthTier）
+	@param data table - ArmWrestle 档案（读 OfflinePending / StrengthTier）
 	@return number - 可领力量（向下取整）；无待领或依赖未注入为 0
 ]]
 function Offline.GetStrength(plr: Player, data: { [string]: any }): number
@@ -181,18 +179,12 @@ function Offline.Claim(plr: Player): (boolean, any)
 		return false, ERR_NONE
 	end
 	local amount = Offline.GetStrength(plr, data)
-	local reached = Profile.AddStrength(plr, data, amount, getPasses(plr))
+	Profile.AddStrength(plr, data, amount, getPasses(plr))
 	data.OfflinePending = 0
 	if not commit(plr, data) then
 		return false, ERR_NOT_READY
 	end
 	TipsModule.NormalTips(plr, "获得力量", { ArmWrestleConfig.Format(amount) })
-	if reached then
-		local level = ArmWrestleConfig.GetLevel((data.Unlocked or 1) + 1)
-		if level then
-			TipsModule.NormalTips(plr, "可以解锁新关卡", { { level.ZhName } })
-		end
-	end
 	return true, amount
 end
 

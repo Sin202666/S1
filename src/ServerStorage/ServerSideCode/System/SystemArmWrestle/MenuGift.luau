@@ -3,17 +3,17 @@
 	Description: 扳手腕菜单挽留礼物：玩家关闭 Roblox 菜单后弹窗挽留，免费领一次现金（每账号永久一次），服务端结算
 	Author: 程莘
 	Created: 2026-10-15
-	Last Modified: 2026-10-15
+	Last Modified: 2026-10-16
 
 	规则：
-	- 金额 = Profile.BestReward（已解锁关最强对手奖励）× ArmWrestleConfig.MENU_GIFT_CASH_MULT，领取时按当下进度计算
+	- 金额 = ArmWrestleConfig.MENU_GIFT_CASH（固定现金），与关卡进度无关
 	- 档案 MenuGiftClaimed 为 true 后永久不可再领；发现金与写标记经 commit（Profile.Commit）同一 Mutate 原子提交
 	- 客户端何时弹窗（GuiService.MenuOpened / MenuClosed）只影响展示；领取请求不带参数，
 	  不依赖客户端是否真的打开过菜单，次数只由本模块按档案把关
 
 	客户端镜像（SyncAttributes，由 init 的 _afterChange 调用）：
 	- MenuGiftClaimed：是否已领；false 时客户端在关闭 Roblox 菜单后弹挽留窗
-	- MenuGiftCash：按当前进度预估的可领现金（仅展示，结算以 Claim 为准）
+	- MenuGiftCash：固定可领现金（仅展示，结算以 Claim 为准）
 
 	与相关模块：
 	- 只改档案字段 MenuGiftClaimed 与背包金币，写回经 Bind 注入的 commit（带金币增量的原子提交并同步镜像）
@@ -39,7 +39,7 @@ local ERR_CLAIMED = "claimed"
 local ERR_NOT_READY = "notReady"
 local ATTR_CLAIMED = "MenuGiftClaimed"
 local ATTR_CASH = "MenuGiftCash"
-local CASH_MULT = ArmWrestleConfig.MENU_GIFT_CASH_MULT
+local GIFT_CASH = ArmWrestleConfig.MENU_GIFT_CASH
 
 -- 领取进行中的玩家：commit 若让出线程，同一玩家的并发请求不得重复读到未领状态
 local _claiming: { [Player]: boolean } = {}
@@ -55,12 +55,12 @@ function MenuGift.Bind(deps: { commit: (Player, { [string]: any }, number?) -> b
 end
 
 --[[
-	按当前进度计算可领现金
-	@param data table - ArmWrestle 档案（读 Unlocked）
-	@return number - 可领现金（向下取整，≥0）
+	可领现金（固定值，与档案进度无关）
+	@param _data table - ArmWrestle 档案（保留参数以兼容 SyncAttributes）
+	@return number - 可领现金
 ]]
-function MenuGift.GetCash(data: { [string]: any }): number
-	return math.max(math.floor(Profile.BestReward(data) * CASH_MULT), 0)
+function MenuGift.GetCash(_data: { [string]: any }): number
+	return GIFT_CASH
 end
 
 --[[

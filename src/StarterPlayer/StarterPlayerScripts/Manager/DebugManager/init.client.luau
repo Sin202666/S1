@@ -7,7 +7,7 @@
 
 	功能：
 	- Dev / Studio 环境下加载调试 UI（DebugSystem）
-	- 背包增删清、记录修改、扳手腕解锁全部手臂/材质/哑铃、数据初始化等操作发 Remote 至服务端
+	- 背包增删清、记录修改、数据初始化等操作发 Remote 至服务端
 	- 短视频启用时注册「短视频界面」按钮，开关 2D 播放界面
 
 	与相关模块：
@@ -58,9 +58,6 @@ local DebugSystem = require(guiScripts.DebugSystem)
 local COVER_RECORD_OP = EnumMgr.DebugSpecialOp.CoverRecord
 local ADD_ONLINE_SECONDS_OP = EnumMgr.DebugSpecialOp.AddOnlineSeconds
 local RESET_ONLINE_AWARD_OP = EnumMgr.DebugSpecialOp.ResetOnlineAward
-local UNLOCK_ALL_ARMS_OP = EnumMgr.DebugSpecialOp.UnlockAllArms
-local UNLOCK_ALL_MATS_OP = EnumMgr.DebugSpecialOp.UnlockAllMats
-local UNLOCK_ALL_DUMBBELLS_OP = EnumMgr.DebugSpecialOp.UnlockAllDumbbells
 
 local InitButtonVt = {
 	{
@@ -84,24 +81,6 @@ local InitButtonVt = {
 		{ Name = "重置在线奖励" },
 		function()
 			NetWork.FireServer(NetMsg.DEBUG_SPECIAL, RESET_ONLINE_AWARD_OP, {})
-		end,
-	},
-	{
-		{ Name = "解锁全部手臂" },
-		function()
-			NetWork.FireServer(NetMsg.DEBUG_SPECIAL, UNLOCK_ALL_ARMS_OP, {})
-		end,
-	},
-	{
-		{ Name = "解锁全部材质" },
-		function()
-			NetWork.FireServer(NetMsg.DEBUG_SPECIAL, UNLOCK_ALL_MATS_OP, {})
-		end,
-	},
-	{
-		{ Name = "解锁全部哑铃" },
-		function()
-			NetWork.FireServer(NetMsg.DEBUG_SPECIAL, UNLOCK_ALL_DUMBBELLS_OP, {})
 		end,
 	},
 	{

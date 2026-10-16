@@ -1,28 +1,26 @@
 --[[
 	Module: SystemArmWrestle
-	Description: 扳手腕服务端领域：存档、训练、对局、经济；RegisterNetWork 与世界绑定
+	Description: 扳手腕服务端领域：经济、药水、离线奖励与菜单礼物；RegisterNetWork
 	Author: 程莘
 	Created: 2026-10-14
-	Last Modified: 2026-10-15
+	Last Modified: 2026-10-16
 
 	功能：
-	- Init：绑世界、限频、心跳、库存；不迁版本、不直连 DataStore
+	- Init：绑限频与药水心跳；不迁版本、不直连 DataStore
 	- SetupPlayer / OnCharacter / OnPlayerRemoving：由 PlayerManager 编排
-	- 训练/点按/操作经 NetWork；结算权威在本模块子文件
+	- 哑铃训练已下线，不再注册训练 Remote
 
 	与相关模块：
 	- Profile 只经 PlayerData.ChangePlrData
-	- Battle 独占对局 PivotTo；SpeedTier 由客户端 CMS modifier 消费
 	- Economy 不设置 ProcessReceipt；真实收据由 SystemBuyRoblox 按 ItemShopData 冻结快照后调 GrantReceiptProduct
 	- 通行证购买由 SystemBuyRoblox → SystemShop 落档；成功后 RefreshPassMirror；进服补发由 SystemShop.Init
 	- Potion：药水在线计时；本模块负责每秒到期检测、定时与离服把剩余秒数写回档案。药水库存是背包物品，
 	  背包 / 快捷栏使用经 ItemScript.ArmWrestlePotion 调 ApplyPotionItem
 	- Boost：同服好友 / Roblox 会员现金加成（仅会话）；加成变化时回调本模块重同步镜像
 	- Offline：离线奖励；进服 Settle 记待领秒数，离服与定时检查点刷新 LastOnline，领取走 Action "ClaimOffline"
-	- MenuGift：菜单挽留礼物（每账号一次现金）；领取走 Action "ClaimMenuGift"，镜像随 _afterChange 同步
+	- MenuGift：菜单挽留礼物（每账号一次固定现金）；领取走 Action "ClaimMenuGift"，镜像随 _afterChange 同步
 	- 排行走 SystemRecord + SystemRank
-	- 新手引导走 SystemGuide：_afterChange 传档案快照判定推进；对局胜利经 Battle 注入的 guideEvent 带 "win" 事件，材质机触发成功经 Economy 带 "machine" 事件
-	  快照含 Can* 前置字段（金币够买下一档训练速度 / 最便宜未拥有手臂 / 本关材质机，力量够打本关 Boss / 开下一关门），价格只读 ArmWrestleConfig
+	- 哑铃训练、手臂、比赛、升级垫、地图解锁、材质、地图传送已下线；对应存档字段留在 SaveMetaData，本模块不再读写
 
 	加载：
 		local SystemArmWrestle = Utils.SystemArmWrestle
@@ -31,24 +29,16 @@
 ]]
 
 local Utils = require(game.ReplicatedFirst.AllSideCode.UtilsSystem)
-local Workspace = game:GetService("Workspace")
 local Players = Utils.Players
-local RunService = Utils.RunService
 local ArmWrestleConfig = Utils.ArmWrestleConfig
 local EnumMgr = Utils.EnumMgr
 local NetWork = Utils.NetWork
 local NetMsg = Utils.NetMsg
 local RequestRateLimit = Utils.RequestRateLimit
-local SystemGuide = Utils.SystemGuide
 local Log = Utils.Log
 
 local Profile = require(script.Profile)
-local Look = require(script.Look)
-local Train = require(script.Train)
-local Battle = require(script.Battle)
 local Economy = require(script.Economy)
-local WorldBoard = require(script.WorldBoard)
-local Gate = require(script.Gate)
 local Potion = require(script.Potion)
 local Boost = require(script.Boost)
 local Offline = require(script.Offline)
@@ -57,7 +47,6 @@ local MenuGift = require(script.MenuGift)
 local SystemArmWrestle = {}
 
 local PlayerAttr = EnumMgr.PlayerAttr
-local ACTION_UNLOCK_LEVEL = "UnlockLevel"
 local ACTION_USE_POTION = "UsePotion"
 local ACTION_CLAIM_OFFLINE = "ClaimOffline"
 local ACTION_CLAIM_MENU_GIFT = "ClaimMenuGift"
@@ -66,157 +55,17 @@ local POTION_TICK_SEC = 1
 local POTION_CHECKPOINT_SEC = 60
 local _inited = false
 local _netRegistered = false
-local _guidePrices: { [string]: any }? = nil
 
 --[[
-	集合表计数
-	@param set any - { [key] = true }；非表计 0
-	@return number - 键数量
-]]
-local function _countKeys(set: any): number
-	if type(set) ~= "table" then
-		return 0
-	end
-	local n = 0
-	for _ in pairs(set) do
-		n += 1
-	end
-	return n
-end
-
---[[
-	关卡材质机最低购买花费（池内材质 Price 最低值；抽取本身免费）
-	@param level table? - 关卡配置
-	@return number? - 最低购买价；无机器或无价格为 nil
-]]
-local function _machineMinPrice(level: { [string]: any }?): number?
-	local machine = level and level.Machine
-	if type(machine) ~= "table" then
-		return nil
-	end
-	local best: number? = nil
-	for _, id in ipairs(machine.Pool or {}) do
-		local mat = ArmWrestleConfig.GetMaterial(id)
-		local price = mat and tonumber(mat.Price)
-		if price and price > 0 and (not best or price < best) then
-			best = price
-		end
-	end
-	return best
-end
-
---[[
-	新手引导前置判定用的静态价格表（配置只读，首次使用时构建一次，避免每次结算深拷贝配置）
-	@return table - { arms: {{Id, Price}}（仅金币价，升序）, trainPrices: {[阶]: number}, machinePrices: {[关]: number}, bossPowers: {[关]: number}, gates: {[关]: number} }
-]]
-local function _getGuidePrices(): { [string]: any }
-	if _guidePrices then
-		return _guidePrices
-	end
-	local arms = {}
-	for _, arm in ipairs(ArmWrestleConfig.GetArms()) do
-		if not arm.Robux and type(arm.Price) == "number" and arm.Price > 0 then
-			table.insert(arms, { Id = arm.Id, Price = arm.Price })
-		end
-	end
-	table.sort(arms, function(a, b)
-		return a.Price < b.Price
-	end)
-	local trainPrices = {}
-	for tier, row in ipairs(ArmWrestleConfig.GetTrainSpeed()) do
-		trainPrices[tier] = row.Price
-	end
-	local machinePrices, bossPowers, gates = {}, {}, {}
-	for index, level in ipairs(ArmWrestleConfig.GetLevels()) do
-		machinePrices[index] = _machineMinPrice(level)
-		local opponents = level.Opponents
-		local boss = type(opponents) == "table" and opponents[#opponents]
-		bossPowers[index] = boss and boss.Power
-		gates[index] = level.Gate
-	end
-	local prices = {
-		arms = arms,
-		trainPrices = trainPrices,
-		machinePrices = machinePrices,
-		bossPowers = bossPowers,
-		gates = gates,
-	}
-	_guidePrices = prices
-	return prices
-end
-
---[[
-	布尔转快照数值（引导条件只比较数值门槛）
-	@param value boolean - 条件结果
-	@return number - true 为 1，false 为 0
-]]
-local function _flag(value: boolean): number
-	return if value then 1 else 0
-end
-
---[[
-	由档案与金币构造新手引导状态快照（字段与 GameConfig「引导」条件一致）
-	@param plr Player - 玩家（读背包金币）
-	@param data table - ArmWrestle 档案
-	@return table - { Strength, Wins, TrainTier, Unlocked, ArmCount, MatCount, Coin, CanBuyTrainSpeed, CanBuyArm, CanBuyMat, CanBeatBoss, CanUnlockGate }；Can* 为 0/1
-]]
-local function _guideState(plr: Player, data: { [string]: any }): { [string]: number }
-	local prices = _getGuidePrices()
-	local strength = data.Strength or 0
-	local trainTier = data.TrainTier or 1
-	local unlocked = data.Unlocked or 1
-	local coin = Profile.GetCoin(plr)
-	local ownedArms = if type(data.Arms) == "table" then data.Arms else {}
-	local armPrice: number? = nil
-	for _, arm in ipairs(prices.arms) do
-		if not ownedArms[tostring(arm.Id)] then
-			armPrice = arm.Price
-			break
-		end
-	end
-	local trainPrice = prices.trainPrices[trainTier + 1]
-	local matPrice = prices.machinePrices[unlocked]
-	local bossPower = prices.bossPowers[unlocked]
-	local gate = prices.gates[unlocked + 1]
-	return {
-		Strength = strength,
-		Wins = data.Wins or 0,
-		TrainTier = trainTier,
-		Unlocked = unlocked,
-		ArmCount = _countKeys(data.Arms),
-		MatCount = _countKeys(data.Mats),
-		Coin = coin,
-		CanBuyTrainSpeed = _flag(trainPrice ~= nil and coin >= trainPrice),
-		CanBuyArm = _flag(armPrice ~= nil and coin >= armPrice),
-		CanBuyMat = _flag(matPrice ~= nil and coin >= matPrice),
-		CanBeatBoss = _flag(bossPower ~= nil and strength >= bossPower),
-		CanUnlockGate = _flag(gate ~= nil and strength >= gate),
-	}
-end
-
---[[
-	带结算事件推进新手引导（Battle 胜利写档成功后调用）
-	@param plr Player - 玩家
-	@param data table - 写档后的档案
-	@param event string - 事件名（"win"）
-	@param arg any? - 事件参数（对手 Id）
-]]
-local function _guideEvent(plr: Player, data: { [string]: any }, event: string, arg: any?)
-	SystemGuide.Evaluate(plr, _guideState(plr, data), event, arg)
-end
-
---[[
-	写回后同步外观/镜像/排行，并按最新档案推进新手引导
+	写回后同步镜像与排行
 	@param plr Player - 玩家
 	@param data table - 档案
-	@param _unlocked boolean - 是否刚解锁关卡
+	@param _unlocked boolean - 旧关卡解锁标记，已无解锁流程，调用方仍传 false
 ]]
 local function _afterChange(plr: Player, data: { [string]: any }, _unlocked: boolean)
 	Profile.Sync(plr, data, Economy.GetPasses(plr))
 	Offline.SyncAttributes(plr, data)
 	MenuGift.SyncAttributes(plr, data)
-	Look.Apply(plr, data)
-	SystemGuide.Evaluate(plr, _guideState(plr, data))
 end
 
 --[[
@@ -251,16 +100,13 @@ local function _commitProfile(plr: Player, data: { [string]: any }, coinDelta: n
 end
 
 --[[
-	分发客户端 Action：关卡解锁走 Gate，使用药水走 Potion，离线奖励走 Offline，挽留礼物走 MenuGift，其余走 Economy
+	分发客户端 Action：使用药水走 Potion，离线奖励走 Offline，挽留礼物走 MenuGift，其余走 Economy
 	@param plr Player - 玩家
 	@param action string - 动作名
 	@param ... any - 参数
 	@return any - 结果
 ]]
 local function _dispatchAction(plr: Player, action: string, ...: any): any
-	if action == ACTION_UNLOCK_LEVEL then
-		return Gate.OnUnlock(plr, ...)
-	end
 	if action == ACTION_USE_POTION then
 		return Potion.Use(plr, ...)
 	end
@@ -315,12 +161,12 @@ local function _runPotionClock()
 end
 
 --[[
-	是否对局中（给技能/坐骑拒释）
-	@param plr Player - 玩家
-	@return boolean
+	是否对局中。比赛已下线，恒为 false，供技能/坐骑的旧调用点继续编译
+	@param _plr Player - 玩家
+	@return boolean - 恒 false
 ]]
-function SystemArmWrestle.IsInBattle(plr: Player): boolean
-	return Battle.IsInBattle(plr) or plr:GetAttribute(PlayerAttr.InBattle) == true
+function SystemArmWrestle.IsInBattle(_plr: Player): boolean
+	return false
 end
 
 --[[
@@ -378,17 +224,6 @@ function SystemArmWrestle.RefreshPassMirror(plr: Player)
 end
 
 --[[
-	调试入口：解锁某类全部款式；仅供服务端 DebugManager 在 Dev 服校验后调用，不改装备、不扣限量库存
-	@param plr Player - 目标玩家（须在线且档案已加载）
-	@param kind string - "Arm" 全部手臂 / "Mat" 全部材质 / "Dumbbell" 全部哑铃
-	@return boolean - 写档成功为 true
-	@return string? - 失败码：INVALID_KIND / PROFILE_NOT_READY / COMMIT_FAILED
-]]
-function SystemArmWrestle.DebugUnlockAll(plr: Player, kind: string): (boolean, string?)
-	return Economy.DebugUnlockAll(plr, kind)
-end
-
---[[
 	注册 Remote / 限频（可重复调用）
 ]]
 function SystemArmWrestle.RegisterNetWork()
@@ -396,17 +231,8 @@ function SystemArmWrestle.RegisterNetWork()
 		return
 	end
 	_netRegistered = true
-	-- 最快训练档 0.25s ÷ 训练速度药水 2 倍 = 每秒 8 次，留余量
-	RequestRateLimit.SetRateLimitConfig(NetMsg.ARM_WRESTLE_TRAIN, { maxRequests = 12, timeWindow = 1 })
-	RequestRateLimit.SetRateLimitConfig(NetMsg.ARM_WRESTLE_TAP, { maxRequests = 20, timeWindow = 1 })
 	RequestRateLimit.SetRateLimitConfig(NetMsg.ARM_WRESTLE_ACTION, { maxRequests = 8, timeWindow = 2 })
 
-	NetWork.RegisterServerRemoteEvent(NetMsg.ARM_WRESTLE_TRAIN, function(plr: Player)
-		Train.OnTrain(plr)
-	end)
-	NetWork.RegisterServerRemoteEvent(NetMsg.ARM_WRESTLE_TAP, function(plr: Player)
-		Battle.OnTap(plr)
-	end)
 	NetWork.RegisterServerRemoteFunction(NetMsg.ARM_WRESTLE_ACTION, function(plr: Player, action: any, ...: any)
 		if type(action) ~= "string" then
 			return false
@@ -430,26 +256,8 @@ function SystemArmWrestle.Init()
 	_inited = true
 	SystemArmWrestle.RegisterNetWork()
 
-	Train.Bind({
-		hasPass = Economy.HasPass,
-		getPasses = Economy.GetPasses,
-		isInBattle = Battle.IsInBattle,
-		afterChange = _afterChange,
-	})
-	Battle.Bind({
-		hasPass = Economy.HasPass,
-		getPasses = Economy.GetPasses,
-		afterChange = _afterChange,
-		guideEvent = _guideEvent,
-	})
 	Economy.Bind({
-		isInBattle = Battle.IsInBattle,
 		afterChange = _afterChange,
-		guideEvent = _guideEvent,
-	})
-	Gate.Bind({
-		isInBattle = Battle.IsInBattle,
-		commit = _commitProfile,
 	})
 	Potion.Bind({
 		getProfile = Profile.Get,
@@ -467,25 +275,6 @@ function SystemArmWrestle.Init()
 		commit = _commitProfile,
 	})
 	task.spawn(_runPotionClock)
-
-	local world = Workspace:FindFirstChild(ArmWrestleConfig.WORLD_NAME)
-	if world then
-		Battle.BindWorld(world)
-		Economy.BindWorld(world)
-		Gate.BindWorld(world)
-		Battle.StartHeartbeat()
-		task.spawn(function()
-			Economy.RefreshStock()
-			task.wait(5)
-			while true do
-				WorldBoard.Refresh(world)
-				Economy.RefreshStock()
-				task.wait(if RunService:IsStudio() then 15 else 60)
-			end
-		end)
-	else
-		Log.warn("SystemArmWrestle.Init：未找到 Workspace.World")
-	end
 end
 
 --[[
@@ -495,6 +284,7 @@ end
 function SystemArmWrestle.SetupPlayer(plr: Player)
 	Economy.SetupPlayer(plr)
 	Boost.SetupPlayer(plr)
+	plr:SetAttribute(PlayerAttr.InBattle, false)
 	local data = Profile.Get(plr)
 	if not data then
 		return
@@ -502,27 +292,15 @@ function SystemArmWrestle.SetupPlayer(plr: Player)
 	Potion.Load(plr, data)
 	Offline.Settle(plr, data)
 	Profile.Save(plr, data)
-	SystemGuide.SetupPlayer(plr, _guideState(plr, data))
 	_afterChange(plr, data, false)
 end
 
 --[[
-	角色生成：外观 + 哑铃
-	@param plr Player - 玩家
+	角色生成。外观与哑铃已下线，这里不再改角色
+	@param _plr Player - 玩家
 	@param _char Model - 角色
 ]]
-function SystemArmWrestle.OnCharacter(plr: Player, _char: Model)
-	local data = Profile.Get(plr)
-	if data then
-		Look.Apply(plr, data)
-	end
-	Look.EnsureDumbbell(plr, if data then data.Dumbbell else 1)
-	local hum = _char:FindFirstChildOfClass("Humanoid")
-	if hum then
-		hum.Died:Connect(function()
-			Battle.ForceEnd(plr)
-		end)
-	end
+function SystemArmWrestle.OnCharacter(_plr: Player, _char: Model)
 end
 
 --[[
@@ -530,13 +308,11 @@ end
 	@param plr Player - 玩家
 ]]
 function SystemArmWrestle.OnPlayerRemoving(plr: Player)
-	Battle.ForceEnd(plr)
 	-- PlayerManager 在本函数之后才 PlayerLeaveSave，药水剩余秒数与 LastOnline 须先写回档案
 	_savePotionLeft(plr)
 	Potion.Unload(plr)
 	Offline.Unload(plr)
 	MenuGift.Unload(plr)
-	Train.OnPlayerRemoving(plr)
 	Economy.OnPlayerRemoving(plr)
 	Boost.OnPlayerRemoving(plr)
 end

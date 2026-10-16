@@ -466,9 +466,6 @@ function ModuleRegistry.Create(ctx: RegistryContext): Registries
 		ArmWrestleStyle = function()
 			return _getModuleInstance(systemPath, "ArmWrestleStyle")
 		end,
-		ArmSkin = function()
-			return _getModuleInstance(systemPath, "ArmSkin")
-		end,
 		RayCast = function()
 			return _getModuleInstance(systemPath, "RayCast")
 		end,

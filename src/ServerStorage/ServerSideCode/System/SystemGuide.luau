@@ -3,7 +3,7 @@
 	Description: 新手引导服务端：按 GameConfig「引导」判定阶段完成、记录进度、向客户端发布当前阶段
 	Author: 程莘
 	Created: 2026-10-15
-	Last Modified: 2026-10-15
+	Last Modified: 2026-10-16
 
 	功能：
 	- 阶段完成只由服务端判定：业务结算后调 Evaluate，用状态快照与结算事件匹配阶段 Done，满足即推进（一次可连跳多阶段）
@@ -20,7 +20,7 @@
 	与相关模块：
 	- 状态快照由业务模块构造并传入（当前为 SystemArmWrestle：Strength / Wins / TrainTier / Unlocked / ArmCount / MatCount / Coin / Can* 0/1 前置字段），本模块不读业务存档
 	- 进度读写只经 SystemRecord；版本迁移（旧 ArmWrestle.Tutorial → Record）在 FixData v2
-	- 客户端 SystemGuide（ClientSideCode.SystemModule）解析 GuideName 显示箭头 / 引导线 / 高光，HUD Objective 显示文案
+	- 客户端 SystemGuide（ClientSideCode.SystemModule）解析 GuideName 显示箭头 / 引导线 / 高光；主界面已无引导文案框
 
 	加载（仅服务端）：
 		local SystemGuide = Utils.SystemGuide

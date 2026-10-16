@@ -3,7 +3,7 @@
 	Description: 扳手腕菜单挽留弹窗：玩家一打开 Roblox 菜单即弹出，免费领一次现金，点击领取请求服务端结算
 	Author: 程莘
 	Created: 2026-10-15
-	Last Modified: 2026-10-15
+	Last Modified: 2026-10-16
 
 	功能：
 	- 监听 GuiService.MenuOpened：菜单打开瞬间弹出，透过菜单半透明背景可见；关闭菜单后仍留在屏幕上等待领取或手动关闭
@@ -20,7 +20,7 @@
 	- MenuGiftGui(ScreenGui，默认 Enabled=false，IgnoreGuiInset，ScreenInsets=None，ResetOnSpawn=false)
 	  - Dim（全屏黑色半透明遮罩，Active 拦截点击）
 	  - Holder（全屏透明容器，居中）/ UIScale（脚本按屏幕适配写入）
-	    - MenuGift(Frame，屏幕居中；外框与 ArmWrestleDumbbells 等弹窗同一套积木风格；不得再挂 UIScale，Style.Pop 用 PopScale)
+	    - MenuGift(Frame，屏幕居中；外框与商店弹窗同一套积木风格；不得再挂 UIScale，Style.Pop 用 PopScale)
 	      - TitleBar（金色积木标题栏）/ Title（标题，Icon=gift）/ GiftIcon（礼物图标 ImageLabel）/ Desc（说明）/ Reward（预估现金，Icon=cash）
 	      - ClaimButton（绿色积木按钮）/ Label（领取）、Pulse（UIScale，呼吸动画专用）
 	      - CloseButton（红色积木关闭按钮，「X」为静态子节点 Icon）
@@ -45,7 +45,6 @@ local TipsModule = Utils.TipsModule
 local SystemUISfx = Utils.SystemUISfx
 
 local Common = require(script.Parent.Common)
-local Battle = require(script.Parent.Battle)
 
 local Style = ArmWrestleStyle
 
@@ -129,7 +128,7 @@ local function _refresh()
 end
 
 --[[
-	Roblox 菜单打开：未领取且不在对局时弹出（已显示则不重复弹）
+	Roblox 菜单打开：未领取时弹出（已显示则不重复弹）
 	@return nil
 ]]
 local function _onMenuOpened()
@@ -138,7 +137,7 @@ local function _onMenuOpened()
 	if not root or not screen then
 		return
 	end
-	if Common.Attr(ATTR_CLAIMED, true) ~= false or Battle.IsActive() then
+	if Common.Attr(ATTR_CLAIMED, true) ~= false then
 		return
 	end
 	_refresh()

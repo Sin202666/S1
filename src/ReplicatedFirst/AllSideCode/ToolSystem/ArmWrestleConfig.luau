@@ -27,7 +27,7 @@
 	- 商城分区顺序：ShopPassOrder / ShopPackOrder / PotionOrder（常量表）；稀有度 _RARITIES 仍本文件
 	- FormatFixed：三位有效数字价签（1.00T / 10.0B）；Format 为通用缩写（去尾零）
 	- 离线奖励参数 OFFLINE_RATE / OFFLINE_MIN_SEC / OFFLINE_MAX_SEC：服务端 SystemArmWrestle.Offline 结算
-	- 菜单挽留礼物倍数 MENU_GIFT_CASH_MULT：服务端 SystemArmWrestle.MenuGift 结算（每账号一次）
+	- 菜单挽留礼物 MENU_GIFT_CASH：服务端 SystemArmWrestle.MenuGift 结算的固定现金（每账号一次）
 	- 数值设计说明见 docs/扳手腕数值设计说明.md
 
 	加载：
@@ -326,6 +326,10 @@ ArmWrestleConfig.OFFLINE_RATE = _const("OFFLINE_RATE", 0.1)
 ArmWrestleConfig.OFFLINE_MIN_SEC = if RunService:IsStudio() then 10 else _const("OFFLINE_MIN_SEC", 300)
 ArmWrestleConfig.OFFLINE_MAX_SEC = _const("OFFLINE_MAX_SEC", 28800)
 ArmWrestleConfig.MENU_GIFT_CASH_MULT = _const("MENU_GIFT_CASH_MULT", 10)
+-- 训练间隔（秒）。升级垫下线后固定为原训练速度第 1 档（Value = 1），不再读 AWUpgrade
+ArmWrestleConfig.TRAIN_COOLDOWN = 1
+-- 菜单挽留礼物固定现金。原公式是第 1 关最强对手奖励 150 × MENU_GIFT_CASH_MULT
+ArmWrestleConfig.MENU_GIFT_CASH = 1500
 ArmWrestleConfig.ZoneLength = _const("ZoneLength", 170)
 ArmWrestleConfig.ZoneWidth = _const("ZoneWidth", 130)
 ArmWrestleConfig.BattleTime = _const("BattleTime", 15)

@@ -1,6 +1,6 @@
 --[[
 	Module: Common
-	Description: ArmWrestleHUD 子模块共享上下文：静态 HUD 绑定、大字/彩纸、玩家镜像读取、请求转发、弹窗开关
+	Description: ArmWrestleHUD 子模块共享上下文：静态 HUD 绑定、彩纸、玩家镜像读取、请求转发、弹窗开关
 	Author: 程莘
 	Created: 2026-10-14
 	Last Modified: 2026-10-16
@@ -8,12 +8,11 @@
 	只读服务端同步的 Attribute / PlayerData / 背包 NumberValue；服务端请求一律经客户端 SystemArmWrestle.Invoke。
 	货币即背包金币（EnumMgr.ItemID.Coin），用 Common.Coin() 读，不再读 Cash Attribute。
 	药水持有数同样是背包物品（ArmWrestleConfig.GetPotion().ItemId），用 Common.ItemCount / Common.OnItemChanged 读。
-	文本提示统一走 TipsModule（渲染在 TipsGui.NewTipsFrame，位置由 TipsAnchor 跟随顶栏）；服务端失败码用 Common.ShowErrorTip 转成错误提示。
+	文本提示统一走 TipsModule（渲染在 TipsGui.NewTipsFrame，位置由 TipsAnchor 贴在 Roblox 顶栏下方）；服务端失败码用 Common.ShowErrorTip 转成错误提示。
 
 	静态 UI（Studio 中 StarterGui 下维护，代码只绑定不新建）：
-	- ScreenGui.ArmWrestleHUD：全屏 HUD 容器；各分组 Frame 自带 UIScale（HUD 设计倍率），根缩放由 UISetMgr 写 ScreenGui.UIScale
-	- ScreenGui_Full.Top：力量/现金顶栏（IgnoreGuiInset，贴屏幕最上沿）；UIScale 配 Mobie_Scale/PC_Scale 占屏系数，由 UISetMgr 按弹窗逻辑实时写 AdaptScale
-	- ScreenGui.ArmWrestleArms / ArmWrestleShop：弹窗，经 UIManager（SHOW_LOCAL_UI）开关，UIScale 由 UISetMgr 适配
+	- ScreenGui.ArmWrestleHUD：全屏 HUD 容器；左下角 Cash 为现金；各分组 Frame 自带 UIScale（HUD 设计倍率），根缩放由 UISetMgr 写 ScreenGui.UIScale
+	- ScreenGui.ArmWrestleShop：商店弹窗，经 UIManager（SHOW_LOCAL_UI）开关，UIScale 由 UISetMgr 适配
 	- 文字左侧图标由 Attribute "Icon" 驱动，Bind 时 ArmWrestleStyle.BindIcons 统一接管（含运行时克隆的卡片）
 ]]
 
@@ -34,7 +33,6 @@ local SystemBuyRoblox = Utils.SystemBuyRoblox
 local Log = Utils.Log
 
 local Style = ArmWrestleStyle
-local C = Style.Colors
 local BagData = GetData.Bag
 
 local Common = {}
@@ -44,18 +42,13 @@ Common.COIN_ID = EnumMgr.ItemID.Coin
 local SCREEN_GUI_NAME = "ScreenGui"
 local SCREEN_GUI_FULL_NAME = "ScreenGui_Full"
 local HUD_NAME = "ArmWrestleHUD"
-local TOP_NAME = "Top"
 
 Common.gui = nil :: Frame?
 Common.screenGui = nil :: ScreenGui?
 Common.screenGuiFull = nil :: ScreenGui?
-Common.top = nil :: Frame?
 Common.hud = {} :: { [string]: any }
 
-local _bigText: TextLabel?
 local _rootScale: UIScale?
-local _hudScale: UIScale?
-local _bigToken = 0
 local _textCache: { [Instance]: string } = setmetatable({}, { __mode = "k" }) :: any
 local _invoke: ((string, ...any) -> ...any)? = nil
 
@@ -102,7 +95,7 @@ end
 
 --[[
 	发 Action 请求（服务端权威结算）
-	@param action string - EquipArm / BuyArm / EquipMat / BuyDumbbell / EquipDumbbell / DevGrant / Teleport / SetAuto / OfferBuy / OfferNext / UsePotion / ClaimOffline / ClaimMenuGift
+	@param action string - DevGrant / UsePotion / ClaimOffline / ClaimMenuGift
 	@param ... any - 参数
 	@return any - 服务端返回（ok, result）
 ]]
@@ -197,20 +190,6 @@ function Common.HasPass(key: string): boolean
 end
 
 --[[
-	已解锁关最高对手奖励（展示用，与服务端 Profile.BestReward 同公式）
-	@return number - 奖励
-]]
-function Common.BestReward(): number
-	local levels = ArmWrestleConfig.GetLevels()
-	local level = levels[math.clamp(Common.Attr("Unlocked", 1), 1, #levels)]
-	local opponents = level and level.Opponents
-	if not opponents or #opponents == 0 then
-		return 0
-	end
-	return opponents[#opponents].Reward or 0
-end
-
---[[
 	秒数格式化 m:ss
 	@param t number - 秒
 	@return string - 展示串
@@ -247,36 +226,6 @@ function Common.SetRaw(lbl: TextLabel, text: string)
 	end
 	_textCache[lbl] = sig
 	TranslationHelper.SetRawText(lbl, text)
-end
-
---[[
-	屏幕中部大字
-	@param key string? - 翻译键；nil 时用 raw
-	@param color Color3? - 颜色
-	@param duration number? - 持续秒，默认 1.5
-	@param args table? - 占位参数
-	@param raw string? - 原文（倒计时数字）
-]]
-function Common.ShowBig(key: string?, color: Color3?, duration: number?, args: { [any]: any }?, raw: string?)
-	local big = _bigText
-	if not big then
-		return
-	end
-	if key then
-		Common.SetText(big, key, args)
-	else
-		Common.SetRaw(big, raw or "")
-	end
-	big.TextColor3 = color or C.White
-	big.Visible = true
-	Style.Pop(big)
-	_bigToken += 1
-	local token = _bigToken
-	task.delay(duration or 1.5, function()
-		if _bigToken == token then
-			big.Visible = false
-		end
-	end)
 end
 
 --[[
@@ -347,7 +296,7 @@ end
 
 --[[
 	经 UIManager 开关 ScreenGui 下的弹窗（播放 PopUp/PopBack，缩放由 UISetMgr 适配）
-	@param uiName string - 弹窗 Frame 名，同 GuiScripts 模块名（ArmWrestleArms / ArmWrestleShop / OnlineAward 等）
+	@param uiName string - 弹窗 Frame 名，同 GuiScripts 模块名（ArmWrestleShop / OnlineAward 等）
 	@param isShow boolean? - true 打开、false 关闭、nil 按当前显隐取反
 ]]
 function Common.ShowPopup(uiName: string, isShow: boolean?)
@@ -355,36 +304,31 @@ function Common.ShowPopup(uiName: string, isShow: boolean?)
 end
 
 --[[
-	HUD 在屏幕上的实际像素倍率（ScreenGui_Full 根 contain × Top 设计倍率），供独立特效 ScreenGui 按像素换算尺寸
+	HUD 在屏幕上的实际像素倍率（ScreenGui 根 UIScale），供独立特效 ScreenGui 按像素换算尺寸
 	@return number - 倍率；未绑定时为 1
 ]]
 function Common.HudScale(): number
-	local root = if _rootScale then _rootScale.Scale else 1
-	local hud = if _hudScale then _hudScale.Scale else 1
-	return root * hud
+	return if _rootScale then _rootScale.Scale else 1
 end
 
 --[[
-	绑定 Studio 中维护的静态 HUD（PlayerGui.ScreenGui.ArmWrestleHUD + ScreenGui_Full.Top）：大字、图标
+	绑定 Studio 中维护的静态 HUD（PlayerGui.ScreenGui.ArmWrestleHUD）：图标
 	@return Frame - HUD 容器
 ]]
 function Common.Bind(): Frame
 	local playerGui = LocalPlayer:WaitForChild("PlayerGui")
 	local screenGui = playerGui:WaitForChild(SCREEN_GUI_NAME) :: ScreenGui
-	local screenGuiFull = playerGui:WaitForChild(SCREEN_GUI_FULL_NAME) :: ScreenGui
+	local screenGuiFull = playerGui:FindFirstChild(SCREEN_GUI_FULL_NAME)
 	local gui = Common.Get(screenGui, HUD_NAME) :: Frame
-	local top = Common.Get(screenGuiFull, TOP_NAME) :: Frame
 	Common.screenGui = screenGui
-	Common.screenGuiFull = screenGuiFull
+	if screenGuiFull and screenGuiFull:IsA("ScreenGui") then
+		Common.screenGuiFull = screenGuiFull
+	end
 	Common.gui = gui
-	Common.top = top
-	-- 顶栏在 Full 下，特效像素倍率跟 Full 根缩放与 Top.UIScale
-	_rootScale = screenGuiFull:FindFirstChildOfClass("UIScale")
-	_hudScale = top:FindFirstChildOfClass("UIScale")
-	_bigText = Common.Get(gui, "BigText", "Label") :: TextLabel
+	-- 特效像素倍率跟主 ScreenGui 根缩放（现金已不在 ScreenGui_Full）
+	_rootScale = screenGui:FindFirstChildOfClass("UIScale")
 	_preloadIcons()
 	Style.BindIcons(gui)
-	Style.BindIcons(top)
 	return gui
 end
 

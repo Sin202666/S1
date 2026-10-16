@@ -18,8 +18,7 @@
 
 	加载（仅 SystemGuide 内部使用）：
 		local UIGuide = require(script.UIGuide)
-		UIGuide.Apply({ path = "ScreenGui.ArmWrestleHUD.Left.ArmsButton", Arrow = "右" })
-		UIGuide.Apply({ path = "ScreenGui.ArmWrestleArms", target = "BuyArm", Arrow = "右" })
+		UIGuide.Apply({ path = "ScreenGui.ArmWrestleHUD.Left.ShopButton", Arrow = "右" })
 		UIGuide.SetVisible(false)
 		UIGuide.Apply(nil)   -- 清除
 ]]

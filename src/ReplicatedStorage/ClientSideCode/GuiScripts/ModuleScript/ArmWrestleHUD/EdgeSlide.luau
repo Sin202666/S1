@@ -6,11 +6,10 @@
 	Last Modified: 2026-10-16
 
 	功能：
-	- 弹窗判定：PlayerGui.ScreenGui / ScreenGui_Full 下的直接子 Frame（排除 HUD 容器 ArmWrestleHUD、Main、顶栏 Top 与彩纸片 ArmWrestleStyle.CONFETTI_NAME）Visible=true，
+	- 弹窗判定：PlayerGui.ScreenGui / ScreenGui_Full 下的直接子 Frame（排除 HUD 容器 ArmWrestleHUD、Main 与彩纸片 ArmWrestleStyle.CONFETTI_NAME）Visible=true，
 	  以及 HUD 内的离线奖励窗 OfflineReward；运行时新增的弹窗 Frame 经 ChildAdded 自动纳入
 	- 边缘分组（节点名为代码契约，改名须同步 EDGE_GROUPS）：
-	  ScreenGui_Full：Top 向上
-	  ArmWrestleHUD：Left 向左，Right 向右，Boost / PotionBuff / Objective 向下
+	  ArmWrestleHUD：Left 向左，Cash / Boost / PotionBuff 向下
 	  Main（框架层，节点可缺省）：Top 向上，Left 向左，Right 向右，Backpack 向下（按其下「工具栏」测距）
 	- 滑出距离按分组当前布局到屏幕边缘的像素实时换算成 Scale，只改 Position.Scale，不动 Offset，分辨率/UIScale 变化后仍准确
 	- 只写各分组的 Position；分组显隐仍由 Battle 等模块写 Visible，二者互不覆盖
@@ -47,8 +46,6 @@ local SCREEN_GUI_FULL_NAME = "ScreenGui_Full"
 local IGNORED_POPUP_NAMES: { [string]: boolean } = {
 	ArmWrestleHUD = true,
 	Main = true,
-	-- 顶栏直挂 ScreenGui_Full，常显，不能当弹窗
-	Top = true,
 	-- 彩纸片直挂 ScreenGui，飘落期间若算作弹窗会推迟四周 UI 滑回
 	[ArmWrestleStyle.CONFETTI_NAME] = true,
 }
@@ -63,12 +60,10 @@ local LEFT = Vector2.new(-1, 0)
 local RIGHT = Vector2.new(1, 0)
 
 local EDGE_GROUPS: { GroupDef } = {
-	{ root = "Full", name = "Top", dir = UP },
 	{ root = "HUD", name = "Left", dir = LEFT },
-	{ root = "HUD", name = "Right", dir = RIGHT },
+	{ root = "HUD", name = "Cash", dir = DOWN },
 	{ root = "HUD", name = "Boost", dir = DOWN },
 	{ root = "HUD", name = "PotionBuff", dir = DOWN },
-	{ root = "HUD", name = "Objective", dir = DOWN },
 	{ root = "Main", name = "Top", dir = UP, optional = true },
 	{ root = "Main", name = "Left", dir = LEFT, optional = true },
 	{ root = "Main", name = "Right", dir = RIGHT, optional = true },

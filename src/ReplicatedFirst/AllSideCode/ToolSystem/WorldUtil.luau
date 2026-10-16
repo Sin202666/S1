@@ -83,8 +83,8 @@ local IS_SERVER = RunService:IsServer()
 -- PlaceID 信息配置表；格式: [世界ID] = { Dev = PlaceID, Official = PlaceID }
 local PLACE_ID_INFO: { [number]: { Dev: number, Official: number } } = {
 	[1] = {
-		Dev = 76818638773174,
-		Official = 137312540946944,
+		Dev = 140282526066691,
+		Official = 0,
 	},
 }
 

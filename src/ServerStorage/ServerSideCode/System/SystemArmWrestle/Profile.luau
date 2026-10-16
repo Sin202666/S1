@@ -1,9 +1,9 @@
 --[[
 	Module: Profile
-	Description: 扳手腕存档读写、力量/金币结算与客户端镜像（新手引导推进在 SystemGuide）
+	Description: 扳手腕存档读写、力量/金币结算与客户端镜像
 	Author: 程莘
 	Created: 2026-10-14
-	Last Modified: 2026-10-15
+	Last Modified: 2026-10-16
 
 	只经 PlayerData.ChangePlrData（内部 SystemSave.ChangeStat）。不直连 DataStore。
 	货币即背包金币（itemdataConf id=1，EnumMgr.ItemID.Coin），唯一写口为 SystemBag；
@@ -28,7 +28,6 @@ local Profile = {}
 
 local STAT_ROOT = "ArmWrestle"
 local COIN_ID = EnumMgr.ItemID.Coin
-local PlayerAttr = EnumMgr.PlayerAttr
 local RECORD_STRENGTH = RankConfig.GetRecordField(RankConfig.RANK_STRENGTH_NAME) :: string
 
 --[[
@@ -113,17 +112,13 @@ function Profile.Save(plr: Player, data: { [string]: any }): boolean
 end
 
 --[[
-	每次训练的基础力量（不含药水等会话临时加成）：手臂 × 材质 × 哑铃 × 力量倍数档，2 倍力量通行证再 ×2
-	@param data table - 档案（读 Arm / Mat / Dumbbell / StrengthTier）
+	每次训练的基础力量（不含药水等会话临时加成）：力量倍数档，2 倍力量通行证再 ×2
+	@param data table - 档案（读 StrengthTier）
 	@param ownedPasses table - 会话通行证 { [key] = true }
 	@return number - 基础每次训练力量
 ]]
 function Profile.GetBaseStrength(data: { [string]: any }, ownedPasses: { [string]: boolean }): number
-	local arm = ArmWrestleConfig.GetArm(data.Arm) or ArmWrestleConfig.GetArm(1)
-	local mat = ArmWrestleConfig.GetMaterial(data.Mat)
-	local dumbbell = ArmWrestleConfig.GetDumbbell(data.Dumbbell)
-	local strength = (arm and arm.Mult or 1) * (mat and mat.Mult or 1) * (dumbbell and dumbbell.Mult or 1)
-	strength *= ArmWrestleConfig.GetStrengthTierMult(data.StrengthTier)
+	local strength = ArmWrestleConfig.GetStrengthTierMult(data.StrengthTier)
 	if ownedPasses.DoubleStrength then
 		strength *= 2
 	end
@@ -134,7 +129,7 @@ end
 	力量/现金/装备倍率（每次训练力量 = GetBaseStrength × 力量药水；
 	现金倍率 = 2 倍金钱通行证 × 金币药水 × 好友/会员加成 Boost.GetCashMult）
 	@param plr Player - 玩家（读其会话药水与好友/会员加成）
-	@param data table - 档案（读 Arm / Mat / Dumbbell / StrengthTier）
+	@param data table - 档案（读 StrengthTier）
 	@param ownedPasses table - 会话通行证
 	@return number - 每次训练力量
 	@return number - 现金倍率
@@ -149,22 +144,6 @@ function Profile.GetMults(plr: Player, data: { [string]: any }, ownedPasses: { [
 end
 
 --[[
-	已解锁关最高对手奖励
-	@param data table - 档案
-	@return number - 奖励
-]]
-function Profile.BestReward(data: { [string]: any }): number
-	local levels = ArmWrestleConfig.GetLevels()
-	local unlocked = math.clamp(data.Unlocked or 1, 1, #levels)
-	local level = levels[unlocked]
-	local opponents = level and level.Opponents
-	if not opponents or #opponents == 0 then
-		return 0
-	end
-	return opponents[#opponents].Reward or 0
-end
-
---[[
 	同步 Attribute / 排行分（不写 WalkSpeed）；OwnedPasses、FriendBoost / PremiumBoost（整数百分比）与药水镜像（Potion.SyncAttributes）仅供界面展示
 	@param plr Player - 玩家
 	@param data table - 档案
@@ -176,19 +155,11 @@ function Profile.Sync(plr: Player, data: { [string]: any }, ownedPasses: { [stri
 	end
 	local perClick, cashMult = Profile.GetMults(plr, data, ownedPasses)
 	plr:SetAttribute("Strength", data.Strength)
-	plr:SetAttribute("Wins", data.Wins)
-	plr:SetAttribute("Unlocked", data.Unlocked)
-	plr:SetAttribute("TrainTier", data.TrainTier)
-	plr:SetAttribute("SpeedTier", data.SpeedTier)
-	plr:SetAttribute("Arm", data.Arm)
-	plr:SetAttribute("Mat", data.Mat)
-	plr:SetAttribute("Dumbbell", data.Dumbbell)
 	plr:SetAttribute("StrengthTier", data.StrengthTier or 0)
 	plr:SetAttribute("PerClick", perClick)
 	plr:SetAttribute("CashMult", cashMult)
 	plr:SetAttribute("FriendBoost", Boost.GetFriendPercent(plr))
 	plr:SetAttribute("PremiumBoost", Boost.GetPremiumPercent(plr))
-	plr:SetAttribute(PlayerAttr.InBattle, plr:GetAttribute(PlayerAttr.InBattle) == true)
 	plr:SetAttribute("OwnedPasses", _joinKeys(ownedPasses))
 	Potion.SyncAttributes(plr, data)
 	if RECORD_STRENGTH then
@@ -197,22 +168,19 @@ function Profile.Sync(plr: Player, data: { [string]: any }, ownedPasses: { [stri
 end
 
 --[[
-	加力量；关卡不在此自动解锁，须玩家点击门上解锁按钮（Gate.OnUnlock，不要求靠近）
+	加力量
 	@param plr Player - 玩家
 	@param data table - 档案（原地）
 	@param amount number - 增量
-	@param ownedPasses table - 通行证
-	@return boolean - 本次是否刚跨过下一关力量门槛（用于提示去门前解锁）
+	@param _ownedPasses table - 通行证（倍率已在调用前算进 amount）
+	@return boolean - 已加上为 true；增量非法为 false
 ]]
-function Profile.AddStrength(plr: Player, data: { [string]: any }, amount: number, ownedPasses: { [string]: boolean }): boolean
+function Profile.AddStrength(plr: Player, data: { [string]: any }, amount: number, _ownedPasses: { [string]: boolean }): boolean
 	if type(amount) ~= "number" or amount <= 0 then
 		return false
 	end
-	local before = data.Strength or 0
-	data.Strength = before + amount
-	local nextLevel = ArmWrestleConfig.GetLevel((data.Unlocked or 1) + 1)
-	local reached = nextLevel ~= nil and before < nextLevel.Gate and data.Strength >= nextLevel.Gate
-	return reached
+	data.Strength = (data.Strength or 0) + amount
+	return true
 end
 
 --[[

@@ -3,11 +3,11 @@
 	Description: 商城弹窗（ScreenGui.ArmWrestleShop）：通行证 / 力量 / 药水 / 兑换码 四个分区
 	Author: 程莘
 	Created: 2026-10-14
-	Last Modified: 2026-10-15
+	Last Modified: 2026-10-16
 
 	功能：
 	- 通行证区：ArmWrestleConfig.ShopPassOrder（2 倍力量 / 2 倍金钱 / 自动点击），已拥有读 OwnedPasses 镜像
-	- 力量区：ShopPackOrder 三档力量包，数值 = PerClick × Amount（与主界面右侧 StrengthShop、服务端 Economy.GrantProduct 同公式，仅展示）
+	- 力量区：ShopPackOrder 三档力量包，数值 = PerClick × Amount（与服务端 Economy.GrantProduct 同公式，仅展示）
 	- 药水区：PotionOrder 三种药水；购买走 Common.Purchase，使用发 Action "UsePotion"，结果走 TipsModule 通用提示；
 	  持有数读背包镜像（Common.ItemCount(药水 ItemId)）；剩余时长不在商城展示（见 PotionBuffBar）
 	- 兑换码区：输入框 + 兑换按钮，走 NetMsg.REDEEM_CODE（服务端 SystemCode 校验与发奖）

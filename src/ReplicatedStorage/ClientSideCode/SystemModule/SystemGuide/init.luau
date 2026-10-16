@@ -3,14 +3,14 @@
 	Description: 新手引导客户端：解析服务端发布的当前阶段，驱动界面箭头 / 引导线 / 场景高光，并向 HUD 提供阶段配置
 	Author: 程莘
 	Created: 2026-10-15
-	Last Modified: 2026-10-15
+	Last Modified: 2026-10-16
 
 	功能：
 	- 监听本地玩家 Attribute GuideName（"引导键|阶段序号[|Pre]"，服务端 SystemGuide 唯一写入），从 GameConfig「引导」取阶段配置
 	- 带 |Pre 时阶段前置未满足，表现改用阶段 Pre 内的 ZhText / line / worldHighlight / ui
 	- 阶段 ui → UIGuide（按钮箭头）；line / worldHighlight → LineGuide（引导线 / 场景高光）
 	- 弹窗打开（PopupOpen，HUD EdgeSlide 写）时箭头改用阶段 popupUi（如商店内购买按钮），未配则隐藏；对局中（SetSuppressed）箭头与引导线全部隐藏
-	- GetStage：当前阶段表现深拷贝，HUD Objective 读 ZhText（手机端优先 ZhText_Mobile）显示文案
+	- GetStage：当前阶段表现深拷贝（ZhText，手机端优先 ZhText_Mobile）；主界面已无引导文案框
 
 	约束：
 	- 纯表现，不上报完成、不推进阶段：阶段完成只由服务端按结算判定（防止客户端伪造引导进度）
@@ -19,7 +19,7 @@
 	与相关模块：
 	- 服务端 SystemGuide：发布 GuideName；配置说明见 GameConfig「引导」
 	- 客户端 SystemArmWrestle：对局开始 SetSuppressed(true)，交还控制 SetSuppressed(false)
-	- ArmWrestleHUD：4Hz 刷新时调 GetStage 写 Objective 文案
+	- 引导配置已清空，入服后 GuideName 为空，箭头与引导线不显示
 
 	加载：
 		local SystemGuide = Utils.SystemGuide
